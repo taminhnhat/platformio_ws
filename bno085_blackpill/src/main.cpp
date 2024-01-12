@@ -22,6 +22,28 @@ struct euler_t
   float roll;
 } ypr;
 
+struct vector4Double
+{
+  double x;
+  double y;
+  double z;
+  double w;
+};
+struct vector3Double
+{
+  double x;
+  double y;
+  double z;
+};
+struct sensors
+{
+  vector4Double orientation;
+  vector3Double angular_velocity;
+  vector3Double linear_acceleration;
+  vector3Double magnetic;
+  double temperature;
+} ros2_sensor;
+
 Adafruit_BNO08x bno08x(BNO08X_RESET);
 sh2_SensorValue_t sensorValue;
 
@@ -32,14 +54,27 @@ long reportIntervalUs = 2000;
 #else
 // Top frequency is about 250Hz but this report is more accurate
 sh2_SensorId_t reportType = SH2_ARVR_STABILIZED_RV;
+// SH2_GYROSCOPE_CALIBRATED SH2_LINEAR_ACCELERATION SH2_MAGNETIC_FIELD_CALIBRATED
 long reportIntervalUs = 5000;
 #endif
 void setReports(sh2_SensorId_t reportType, long report_interval)
 {
   Serial1.println("Setting desired reports");
-  if (!bno08x.enableReport(reportType, report_interval))
+  if (!bno08x.enableReport(SH2_ARVR_STABILIZED_RV, report_interval))
   {
     Serial1.println("Could not enable stabilized remote vector");
+  }
+  if (!bno08x.enableReport(SH2_GYROSCOPE_CALIBRATED, report_interval))
+  {
+    Serial1.println("Could not enable gyroscope calibrated");
+  }
+  if (!bno08x.enableReport(SH2_LINEAR_ACCELERATION, report_interval))
+  {
+    Serial1.println("Could not enable linear acceleration");
+  }
+  if (!bno08x.enableReport(SH2_MAGNETIC_FIELD_CALIBRATED, report_interval))
+  {
+    Serial1.println("Could not enable magnetic field calibrated");
   }
 }
 
@@ -117,24 +152,30 @@ void loop()
     switch (sensorValue.sensorId)
     {
     case SH2_ARVR_STABILIZED_RV:
+      ros2_sensor.orientation.x = sensorValue.un.arvrStabilizedRV.i;
+      ros2_sensor.orientation.y = sensorValue.un.arvrStabilizedRV.j;
+      ros2_sensor.orientation.z = sensorValue.un.arvrStabilizedRV.k;
+      ros2_sensor.orientation.w = sensorValue.un.arvrStabilizedRV.real;
       quaternionToEulerRV(&sensorValue.un.arvrStabilizedRV, &ypr, true);
-    case SH2_GYRO_INTEGRATED_RV:
-      // faster (more noise?)
-      quaternionToEulerGI(&sensorValue.un.gyroIntegratedRV, &ypr, true);
+      break;
+    case SH2_GYROSCOPE_CALIBRATED:
+      ros2_sensor.angular_velocity.x = sensorValue.un.gyroscope.x;
+      ros2_sensor.angular_velocity.y = sensorValue.un.gyroscope.y;
+      ros2_sensor.angular_velocity.z = sensorValue.un.gyroscope.z;
+      break;
+    case SH2_LINEAR_ACCELERATION:
+      ros2_sensor.linear_acceleration.x = sensorValue.un.linearAcceleration.x;
+      ros2_sensor.linear_acceleration.y = sensorValue.un.linearAcceleration.y;
+      ros2_sensor.linear_acceleration.z = sensorValue.un.linearAcceleration.z;
+      break;
+    case SH2_MAGNETIC_FIELD_CALIBRATED:
+      ros2_sensor.magnetic.x = sensorValue.un.magneticField.x;
+      ros2_sensor.magnetic.y = sensorValue.un.magneticField.y;
+      ros2_sensor.magnetic.z = sensorValue.un.magneticField.z;
+      break;
+    default:
       break;
     }
-    // static long last = 0;
-    // long now = micros();
-    // Serial1.print(now - last);
-    // Serial1.print("\t");
-    // last = now;
-    // Serial1.print(sensorValue.status);
-    // Serial1.print("\t"); // This is accuracy in the range of 0 to 3
-    // Serial1.print(ypr.yaw);
-    // Serial1.print("\t");
-    // Serial1.print(ypr.pitch);
-    // Serial1.print("\t");
-    // Serial1.println(ypr.roll);
 
     Serial1.print("yaw="); // This is accuracy in the range of 0 to 3
     Serial1.print(ypr.yaw);
@@ -142,22 +183,36 @@ void loop()
     Serial1.print(ypr.pitch);
     Serial1.print(",roll=");
     Serial1.println(ypr.roll);
+
+    Serial1.print("qx=");
+    Serial1.print(ros2_sensor.orientation.x);
+    Serial1.print(",qy=");
+    Serial1.print(ros2_sensor.orientation.y);
+    Serial1.print(",qz=");
+    Serial1.print(ros2_sensor.orientation.z);
+    Serial1.print(",qw");
+    Serial1.print(ros2_sensor.orientation.w);
+
+    Serial1.print(",gx=");
+    Serial1.print(ros2_sensor.angular_velocity.x);
+    Serial1.print(",gy=");
+    Serial1.print(ros2_sensor.angular_velocity.y);
+    Serial1.print(",gz=");
+    Serial1.print(ros2_sensor.angular_velocity.z);
+
+    Serial1.print(",ax=");
+    Serial1.print(ros2_sensor.linear_acceleration.x);
+    Serial1.print(",ay=");
+    Serial1.print(ros2_sensor.linear_acceleration.y);
+    Serial1.print(",az=");
+    Serial1.print(ros2_sensor.linear_acceleration.z);
+
+    Serial1.print(",mx=");
+    Serial1.print(ros2_sensor.magnetic.x);
+    Serial1.print(",my=");
+    Serial1.print(ros2_sensor.magnetic.y);
+    Serial1.print(",mz=");
+    Serial1.print(ros2_sensor.magnetic.z);
+    Serial1.println("");
   }
 }
-
-// #include <Arduino.h>
-// #include <Adafruit_BNO08x.h>
-// bool ledOn = true;
-// void setup()
-// {
-//   Serial1.begin(115200);
-//   Serial1.println("serial start");
-//   pinMode(LED_BUILTIN, OUTPUT);
-// }
-// void loop()
-// {
-//   Serial1.println("tick");
-//   (ledOn) ? digitalWrite(LED_BUILTIN, HIGH) : digitalWrite(LED_BUILTIN, LOW);
-//   ledOn = !ledOn;
-//   delay(1000);
-// }
