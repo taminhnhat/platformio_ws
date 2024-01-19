@@ -5,8 +5,8 @@
 #include <Adafruit_BNO08x.h>
 
 // For SPI mode, we need a CS pin
-#define BNO08X_CS PB0
-#define BNO08X_INT PB1
+#define BNO08X_CS PB1
+#define BNO08X_INT PB0
 
 // For SPI mode, we also need a RESET
 // #define BNO08X_RESET 5
@@ -15,7 +15,23 @@
 
 Adafruit_BNO08x bno08x(BNO08X_RESET);
 sh2_SensorValue_t sensorValue;
-StaticJsonDocument<500> doc;
+JsonDocument doc;
+
+void setReports();
+void msgProcess(String, Stream &);
+double trimDouble(double, uint8_t);
+void tick();
+
+HardwareTimer timer(TIM1);
+uint64_t timer_count = 0;
+void OnTimer1Interrupt()
+{
+  timer_count++;
+  if (timer_count % 10 == 0)
+  {
+    tick();
+  }
+}
 
 uint64_t last_t = micros();
 String messageFromBridge = "";
@@ -47,13 +63,9 @@ struct sensors
   double temperature;
 } ros2_sensor;
 
-void setReports();
-void msgProcess(String, Stream &);
-double trimDouble(double, uint8_t);
-
 void setup(void)
 {
-  Serial.begin(115200);
+  Serial.begin(460800);
   while (!Serial)
     delay(10); // will pause Zero, Leonardo, etc until serial console opens
 
@@ -89,14 +101,20 @@ void setup(void)
   }
 
   setReports();
+  timer.setPrescaleFactor(9999);
+  timer.setOverflow(9);
+  timer.attachInterrupt(OnTimer1Interrupt);
+  timer.refresh();
+  timer.resume();
 
   Serial.println("Reading events");
-  delay(100);
 }
 
 void loop()
 {
-  delay(10);
+}
+void tick()
+{
   if (bno08x.wasReset())
   {
     Serial.print("sensor was reset ");
@@ -141,9 +159,22 @@ void loop()
 
 void serialEvent1()
 {
-  messageFromBridge = Serial1.readStringUntil('\n');
-  msgProcess(messageFromBridge, Serial1);
-  messageFromBridge = "";
+  // messageFromBridge = Serial1.readStringUntil('\n');
+  // msgProcess(messageFromBridge, Serial1);
+  // messageFromBridge = "";
+  while (Serial1.available())
+  {
+    char tempChar = (char)Serial1.read();
+    if (tempChar != '\n')
+    {
+      messageFromBridge += tempChar;
+    }
+    else
+    {
+      msgProcess(messageFromBridge, Serial1);
+      messageFromBridge = "";
+    }
+  }
 }
 
 // Here is where you define the sensor outputs you want to receive
