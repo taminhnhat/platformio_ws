@@ -237,18 +237,7 @@ void msgProcess(String lightCmd, Stream &stream)
   const String topic_name = String(topic);
   if (topic_name.compareTo("ros2_state") == 0)
   {
-    JsonArray velocity = doc["vel"].to<JsonArray>();
-    velocity.add(0);
-    velocity.add(0);
-    velocity.add(0);
-    velocity.add(0);
-    // add position value
-    JsonArray position = doc["pos"].to<JsonArray>();
-    position.add(0);
-    position.add(0);
-    position.add(0);
-    position.add(0);
-    JsonArray orientation = doc["ori"].to<JsonArray>();
+    JsonArray orientation = doc["qua"].to<JsonArray>();
     orientation.add(trimDouble(ros2_sensor.orientation.x, 0));
     orientation.add(trimDouble(ros2_sensor.orientation.y, 0));
     orientation.add(trimDouble(ros2_sensor.orientation.z, 0));
@@ -268,8 +257,6 @@ void msgProcess(String lightCmd, Stream &stream)
     magnetic.add(trimDouble(ros2_sensor.magnetic_field.x, 0));
     magnetic.add(trimDouble(ros2_sensor.magnetic_field.y, 0));
     magnetic.add(trimDouble(ros2_sensor.magnetic_field.z, 0));
-
-    // doc["dur"] = micros() - start_t;
 
     char buffer[500];
     serializeJson(doc, buffer);
