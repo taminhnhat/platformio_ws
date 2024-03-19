@@ -17,22 +17,6 @@ Adafruit_BNO08x bno08x(BNO08X_RESET);
 sh2_SensorValue_t sensorValue;
 JsonDocument doc;
 
-void setReports();
-void msgProcess(String, Stream &);
-double trimDouble(double, uint8_t);
-void tick();
-
-HardwareTimer timer(TIM1);
-uint64_t timer_count = 0;
-void OnTimer1Interrupt()
-{
-  timer_count++;
-  if (timer_count % 10 == 0)
-  {
-    tick();
-  }
-}
-
 uint64_t last_t = micros();
 String messageFromBridge = "";
 bool CRC_Enable = false;
@@ -62,6 +46,33 @@ struct sensors
   vector3Double magnetic_field;
   double temperature;
 } ros2_sensor;
+
+void setReports();
+void msgProcess(String, Stream &);
+double trimDouble(double, uint8_t);
+void tick();
+
+HardwareTimer timer(TIM1);
+uint64_t timer_count = 0;
+void OnTimer1Interrupt()
+{
+  timer_count++;
+  if (timer_count % 10 == 0)
+  {
+    tick();
+  }
+  // if (timer_count % 100 == 0)
+  // {
+  //   Serial.print(ros2_sensor.orientation.x);
+  //   Serial.print(" ");
+  //   Serial.print(ros2_sensor.orientation.y);
+  //   Serial.print(" ");
+  //   Serial.print(ros2_sensor.orientation.z);
+  //   Serial.print(" ");
+  //   Serial.print(ros2_sensor.orientation.w);
+  //   Serial.println();
+  // }
+}
 
 void setup(void)
 {
@@ -237,36 +248,67 @@ void msgProcess(String lightCmd, Stream &stream)
   const String topic_name = String(topic);
   if (topic_name.compareTo("ros2_state") == 0)
   {
-    JsonArray orientation = doc["qua"].to<JsonArray>();
-    orientation.add(trimDouble(ros2_sensor.orientation.x, 0));
-    orientation.add(trimDouble(ros2_sensor.orientation.y, 0));
-    orientation.add(trimDouble(ros2_sensor.orientation.z, 0));
-    orientation.add(trimDouble(ros2_sensor.orientation.w, 0));
+    // JsonArray orientation = doc["qua"].to<JsonArray>();
+    // orientation.add(trimDouble(ros2_sensor.orientation.x, 0));
+    // orientation.add(trimDouble(ros2_sensor.orientation.y, 0));
+    // orientation.add(trimDouble(ros2_sensor.orientation.z, 0));
+    // orientation.add(trimDouble(ros2_sensor.orientation.w, 0));
 
-    JsonArray gyroscope = doc["gyr"].to<JsonArray>();
-    gyroscope.add(trimDouble(ros2_sensor.angular_velocity.x, 0));
-    gyroscope.add(trimDouble(ros2_sensor.angular_velocity.y, 0));
-    gyroscope.add(trimDouble(ros2_sensor.angular_velocity.z, 0));
+    // JsonArray gyroscope = doc["gyr"].to<JsonArray>();
+    // gyroscope.add(trimDouble(ros2_sensor.angular_velocity.x, 0));
+    // gyroscope.add(trimDouble(ros2_sensor.angular_velocity.y, 0));
+    // gyroscope.add(trimDouble(ros2_sensor.angular_velocity.z, 0));
 
-    JsonArray accelerometer = doc["acc"].to<JsonArray>();
-    accelerometer.add(trimDouble(ros2_sensor.linear_acceleration.x, 0));
-    accelerometer.add(trimDouble(ros2_sensor.linear_acceleration.y, 0));
-    accelerometer.add(trimDouble(ros2_sensor.linear_acceleration.z, 0));
+    // JsonArray accelerometer = doc["acc"].to<JsonArray>();
+    // accelerometer.add(trimDouble(ros2_sensor.linear_acceleration.x, 0));
+    // accelerometer.add(trimDouble(ros2_sensor.linear_acceleration.y, 0));
+    // accelerometer.add(trimDouble(ros2_sensor.linear_acceleration.z, 0));
 
-    JsonArray magnetic = doc["mag"].to<JsonArray>();
-    magnetic.add(trimDouble(ros2_sensor.magnetic_field.x, 0));
-    magnetic.add(trimDouble(ros2_sensor.magnetic_field.y, 0));
-    magnetic.add(trimDouble(ros2_sensor.magnetic_field.z, 0));
+    // JsonArray magnetic = doc["mag"].to<JsonArray>();
+    // magnetic.add(trimDouble(ros2_sensor.magnetic_field.x, 0));
+    // magnetic.add(trimDouble(ros2_sensor.magnetic_field.y, 0));
+    // magnetic.add(trimDouble(ros2_sensor.magnetic_field.z, 0));
 
-    char buffer[500];
-    serializeJson(doc, buffer);
-    String msg = String(buffer);
+    // char buffer[500];
+    // serializeJson(doc, buffer);
+    // String msg = String(buffer);
+    // msg = crc_generate(msg) + msg + "\r\n";
+
+    String msg = "{\"topic\":\"ros2_state\"";
+
+    msg += ",\"qua\":[";
+    msg += ros2_sensor.orientation.x;
+    msg += ",";
+    msg += ros2_sensor.orientation.y;
+    msg += ",";
+    msg += ros2_sensor.orientation.z;
+    msg += ",";
+    msg += ros2_sensor.orientation.w;
+
+    msg += "],\"gyr\":[";
+    msg += ros2_sensor.angular_velocity.x;
+    msg += ",";
+    msg += ros2_sensor.angular_velocity.y;
+    msg += ",";
+    msg += ros2_sensor.angular_velocity.z;
+
+    msg += "],\"acc\":[";
+    msg += ros2_sensor.linear_acceleration.x;
+    msg += ",";
+    msg += ros2_sensor.linear_acceleration.y;
+    msg += ",";
+    msg += ros2_sensor.linear_acceleration.z;
+
+    msg += "],\"mag\":[";
+    msg += ros2_sensor.magnetic_field.x;
+    msg += ",";
+    msg += ros2_sensor.magnetic_field.y;
+    msg += ",";
+    msg += ros2_sensor.magnetic_field.z;
+
+    msg += "]}";
     msg = crc_generate(msg) + msg + "\r\n";
     stream.print(msg);
-  }
-  else if (topic_name.compareTo("ros2_control") == 0)
-  {
-    stream.print("863713777{\"topic\":\"ros2_control\",\"status\":\"ok\"}\r\n");
   }
 }
 
