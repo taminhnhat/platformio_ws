@@ -274,9 +274,7 @@ void msgProcess(String lightCmd, Stream &stream)
     // String msg = String(buffer);
     // msg = crc_generate(msg) + msg + "\r\n";
 
-    String msg = "{\"topic\":\"ros2_state\"";
-
-    msg += ",\"qua\":[";
+    String msg = "{\"qua\":[";
     msg += ros2_sensor.orientation.x;
     msg += ",";
     msg += ros2_sensor.orientation.y;
