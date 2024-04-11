@@ -6,45 +6,42 @@
 #define W25Q_MISO_PIN PA6
 #define W25Q_MOSI_PIN PA7
 
-#define MAX_SPI_FREQUENCY 1000000
+#define MAX_SPI_FREQUENCY 100000000
 
 HardwareTimer timer(TIM1);
 
 bool ledOn = true;
 uint32_t timer_count = 0;
 uint8_t temp_num = 1;
-uint32_t add = 256;
-uint8_t dat = 35;
+uint32_t add = 4096;
+uint8_t dat = 71;
+uint8_t myData[4] = {192, 168, 1, 42};
 
 void readManufacturer();
 void readUniqueID();
 void readJedecID();
 void readStatus1();
-uint8_t readData(uint32_t);
+uint8_t ready();
+void readData(uint32_t, uint8_t);
+void readPage(uint32_t);
 void writeData(uint32_t, uint8_t);
+void writeData(uint32_t, uint8_t *, uint8_t);
 void eraseChip();
+void eraseSector(uint32_t);
 void OnTimer1Interrupt()
 {
   timer_count++;
-  if (timer_count % 3000 == 0)
+  if (timer_count % 5000 == 0)
   {
     ledOn ? digitalWrite(LED_BUILTIN, HIGH) : digitalWrite(LED_BUILTIN, LOW);
     ledOn = !ledOn;
 
-    // digitalWrite(W25Q_SS_PIN, HIGH);
-    // delay(500);
-    // digitalWrite(W25Q_SS_PIN, LOW);
-
-    // readManufacturer();
-    // readUniqueID();
-    // readJedecID();
-    Serial.print("Read: ");
-    Serial.println(readData(0));
-    Serial.println(readData(256));
-    Serial.println(readData(512));
-    // Serial.println(readData(add + 1));
-    // Serial.println(readData(add - 1));
-    // temp_num += 1;
+    while (ready() != 0)
+    {
+      delay(10);
+    }
+    // readPage(0x00);
+    readData(0x00, 10);
   }
 }
 
@@ -73,20 +70,19 @@ void setup()
   // SPI.setSSEL(W25Q_SS_PIN);
   // SPI.setDataMode(SPI_MODE0);
   // SPI.begin(W25Q_SS_PIN);
-  Serial.printf("ss pin: %d\r\n", W25Q_SS_PIN);
 
   // readStatus1();
 
   timer.refresh();
   timer.resume();
 
-  eraseChip();
-  delay(500);
+  uint32_t start_t = millis();
+  // eraseChip();
+  eraseSector(0);
+  Serial.printf("Erasing complete in %d ms\r\n", millis() - start_t);
 
-  Serial.printf("==================================> writing %d to register %d\r\n", dat, add);
-  // Serial.print("Read: ");
-  // Serial.println(readData(add));
-  writeData(add, dat);
+  writeData(0x00, myData, 4);
+  readPage(0x00);
 }
 
 void loop()
@@ -179,7 +175,48 @@ void readStatus1()
   // Serial.println(data[2]);
 }
 
-uint8_t readData(uint32_t address)
+uint8_t ready()
+{
+  uint8_t data[3];
+  SPI.beginTransaction(W25Q_SS_PIN, SPISettings(MAX_SPI_FREQUENCY, MSBFIRST, SPI_MODE0, SPI_TRANSMITRECEIVE));
+  data[0] = SPI.transfer(W25Q_SS_PIN, 0x05, SPI_CONTINUE);
+  data[1] = SPI.transfer(W25Q_SS_PIN, 0x00, SPI_CONTINUE);
+  data[2] = SPI.transfer(W25Q_SS_PIN, 0x00, SPI_LAST);
+  SPI.endTransaction(W25Q_SS_PIN);
+  return data[2] & 0b11111110;
+}
+
+/**
+ * @brief read data from register
+ *
+ * @param address register address
+ * @param data_lenght from 1 to 255 bytes
+ */
+void readData(uint32_t address, uint8_t data_lenght = 1)
+{
+  if (data_lenght == 0)
+    return;
+  uint8_t msb_address = (address >> 16) & 0xff;
+  uint8_t mid_address = (address >> 8) & 0xff;
+  uint8_t lsb_address = address & 0xff;
+  uint8_t data[5];
+  SPI.beginTransaction(W25Q_SS_PIN, SPISettings(MAX_SPI_FREQUENCY, MSBFIRST, SPI_MODE0, SPI_TRANSMITRECEIVE));
+  data[0] = SPI.transfer(W25Q_SS_PIN, 0x03, SPI_CONTINUE);
+  data[1] = SPI.transfer(W25Q_SS_PIN, msb_address, SPI_CONTINUE);
+  data[2] = SPI.transfer(W25Q_SS_PIN, mid_address, SPI_CONTINUE);
+  data[3] = SPI.transfer(W25Q_SS_PIN, lsb_address, SPI_CONTINUE);
+  for (int i = 0; i < data_lenght; i++)
+    Serial.printf("%d ", SPI.transfer(W25Q_SS_PIN, 0x00, SPI_CONTINUE));
+  data[4] = SPI.transfer(W25Q_SS_PIN, 0x00, SPI_LAST);
+  SPI.endTransaction(W25Q_SS_PIN);
+}
+
+/**
+ * @brief read a page (256 bytes) from register
+ *
+ * @param address register address of first byte
+ */
+void readPage(uint32_t address)
 {
   uint8_t msb_address = (address >> 16) & 0xff;
   uint8_t mid_address = (address >> 8) & 0xff;
@@ -192,56 +229,61 @@ uint8_t readData(uint32_t address)
   data[3] = SPI.transfer(W25Q_SS_PIN, lsb_address, SPI_CONTINUE);
   for (int i = 1; i <= 255; i++)
     Serial.printf("%d ", SPI.transfer(W25Q_SS_PIN, 0x00, SPI_CONTINUE));
-  data[4] = SPI.transfer(W25Q_SS_PIN, 0x00, SPI_LAST);
-  SPI.endTransaction(W25Q_SS_PIN);
-  Serial.println(data[4]);
-  return data[4];
+  Serial.println(SPI.transfer(W25Q_SS_PIN, 0x00, SPI_LAST));
 }
 
+/**
+ * @brief Write 1 byte to register (have to erase register first)
+ *
+ * @param address register address
+ * @param data from 0 to
+ */
 void writeData(uint32_t address, uint8_t data)
 {
   uint8_t msb_address = (address >> 16) & 0xff;
   uint8_t mid_address = (address >> 8) & 0xff;
   uint8_t lsb_address = address & 0xff;
-  // Serial.printf("address: %d - %d %d %d\r\n", address, msb_address, mid_address, lsb_address);
   // enable write
-  Serial.println("1. Enable Write");
   SPI.beginTransaction(W25Q_SS_PIN, SPISettings(MAX_SPI_FREQUENCY, MSBFIRST, SPI_MODE0, SPI_TRANSMITRECEIVE));
   SPI.transfer(W25Q_SS_PIN, 0x06, SPI_LAST);
   SPI.endTransaction(W25Q_SS_PIN);
-  // delay(100);
-  readStatus1();
-  // erase
-  // Serial.println("2. Erase Block");
-  // SPI.beginTransaction(W25Q_SS_PIN, SPISettings(MAX_SPI_FREQUENCY, MSBFIRST, SPI_MODE0, SPI_TRANSMITRECEIVE));
-  // SPI.transfer(W25Q_SS_PIN, 0xd8, SPI_CONTINUE);
-  // SPI.transfer(W25Q_SS_PIN, msb_address, SPI_CONTINUE);
-  // SPI.transfer(W25Q_SS_PIN, mid_address, SPI_CONTINUE);
-  // SPI.transfer(W25Q_SS_PIN, lsb_address, SPI_LAST);
-  // SPI.endTransaction(W25Q_SS_PIN);
-  // delay(100);
-  // readStatus1();
   // write process
-  Serial.printf("2. Writing to %d\r\n", address);
   SPI.beginTransaction(W25Q_SS_PIN, SPISettings(MAX_SPI_FREQUENCY, MSBFIRST, SPI_MODE0, SPI_TRANSMITRECEIVE));
   SPI.transfer(W25Q_SS_PIN, 0x02, SPI_CONTINUE);
   SPI.transfer(W25Q_SS_PIN, msb_address, SPI_CONTINUE);
   SPI.transfer(W25Q_SS_PIN, mid_address, SPI_CONTINUE);
   SPI.transfer(W25Q_SS_PIN, lsb_address, SPI_CONTINUE);
-  // for (int i = 1; i <= 255; i++)
-  //   SPI.transfer(W25Q_SS_PIN, data, SPI_CONTINUE);
   SPI.transfer(W25Q_SS_PIN, data, SPI_LAST);
   SPI.endTransaction(W25Q_SS_PIN);
-  // delay(100);
-  // readStatus1();
-
   // disable write
-  Serial.println("3. Disable Write");
   SPI.beginTransaction(W25Q_SS_PIN, SPISettings(MAX_SPI_FREQUENCY, MSBFIRST, SPI_MODE0, SPI_TRANSMITRECEIVE));
   SPI.transfer(W25Q_SS_PIN, 0x04, SPI_LAST);
   SPI.endTransaction(W25Q_SS_PIN);
-  // delay(100);
-  // readStatus1();
+}
+
+void writeData(uint32_t address, uint8_t *data, uint8_t data_size)
+{
+  uint8_t msb_address = (address >> 16) & 0xff;
+  uint8_t mid_address = (address >> 8) & 0xff;
+  uint8_t lsb_address = address & 0xff;
+  // enable write
+  SPI.beginTransaction(W25Q_SS_PIN, SPISettings(MAX_SPI_FREQUENCY, MSBFIRST, SPI_MODE0, SPI_TRANSMITRECEIVE));
+  SPI.transfer(W25Q_SS_PIN, 0x06, SPI_LAST);
+  SPI.endTransaction(W25Q_SS_PIN);
+  // write process
+  SPI.beginTransaction(W25Q_SS_PIN, SPISettings(MAX_SPI_FREQUENCY, MSBFIRST, SPI_MODE0, SPI_TRANSMITRECEIVE));
+  SPI.transfer(W25Q_SS_PIN, 0x02, SPI_CONTINUE);
+  SPI.transfer(W25Q_SS_PIN, msb_address, SPI_CONTINUE);
+  SPI.transfer(W25Q_SS_PIN, mid_address, SPI_CONTINUE);
+  SPI.transfer(W25Q_SS_PIN, lsb_address, SPI_CONTINUE);
+  for (int i = 0; i < data_size - 1; i++)
+    SPI.transfer(W25Q_SS_PIN, data[i], SPI_CONTINUE);
+  SPI.transfer(W25Q_SS_PIN, data[data_size - 1], SPI_LAST);
+  SPI.endTransaction(W25Q_SS_PIN);
+  // disable write
+  SPI.beginTransaction(W25Q_SS_PIN, SPISettings(MAX_SPI_FREQUENCY, MSBFIRST, SPI_MODE0, SPI_TRANSMITRECEIVE));
+  SPI.transfer(W25Q_SS_PIN, 0x04, SPI_LAST);
+  SPI.endTransaction(W25Q_SS_PIN);
 }
 
 void eraseChip()
@@ -258,4 +300,36 @@ void eraseChip()
   SPI.beginTransaction(W25Q_SS_PIN, SPISettings(MAX_SPI_FREQUENCY, MSBFIRST, SPI_MODE0, SPI_TRANSMITRECEIVE));
   SPI.transfer(W25Q_SS_PIN, 0x04, SPI_LAST);
   SPI.endTransaction(W25Q_SS_PIN);
+  // wait
+  while (ready() != 0)
+  {
+    delay(5);
+  }
+}
+
+void eraseSector(uint32_t address)
+{
+  uint8_t msb_address = (address >> 16) & 0xff;
+  uint8_t mid_address = (address >> 8) & 0xff;
+  uint8_t lsb_address = address & 0xff;
+  // enable write
+  SPI.beginTransaction(W25Q_SS_PIN, SPISettings(MAX_SPI_FREQUENCY, MSBFIRST, SPI_MODE0, SPI_TRANSMITRECEIVE));
+  SPI.transfer(W25Q_SS_PIN, 0x06, SPI_LAST);
+  SPI.endTransaction(W25Q_SS_PIN);
+  // erase
+  SPI.beginTransaction(W25Q_SS_PIN, SPISettings(MAX_SPI_FREQUENCY, MSBFIRST, SPI_MODE0, SPI_TRANSMITRECEIVE));
+  SPI.transfer(W25Q_SS_PIN, 0x20, SPI_CONTINUE);
+  SPI.transfer(W25Q_SS_PIN, msb_address, SPI_CONTINUE);
+  SPI.transfer(W25Q_SS_PIN, mid_address, SPI_CONTINUE);
+  SPI.transfer(W25Q_SS_PIN, lsb_address, SPI_LAST);
+  SPI.endTransaction(W25Q_SS_PIN);
+  // disable write
+  SPI.beginTransaction(W25Q_SS_PIN, SPISettings(MAX_SPI_FREQUENCY, MSBFIRST, SPI_MODE0, SPI_TRANSMITRECEIVE));
+  SPI.transfer(W25Q_SS_PIN, 0x04, SPI_LAST);
+  SPI.endTransaction(W25Q_SS_PIN);
+  // wait
+  while (ready() != 0)
+  {
+    delay(5);
+  }
 }
